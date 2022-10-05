@@ -4,79 +4,91 @@
 %
 
 % operation zone data
-Z = 64e3;                         %   the full operation distance, m
-k = 40 : 1 : 100;                 %   sensor node quantity
+z_i = 15e3;                       %   the full operation distance, m
+x_i = 5 : 1 : 65;                 %   sensor node quantity
 
 % comunication parameters
 f_b = 433e6;                      %   carier frequency, Hz
 V_em = 3e8;                       %   speed of light in vacuum, m/s
 P_tr = 100e-3;                    %   transmitter power, W
 SNR = -121;                       %   declared sensitivity, dBm
-Strn = 5;                       %   noise srength coefficient
-R_uart = 38.4e3;                  %   RS-485 interface bit rate (symbol speed), kbit/s
-R_rfm   = 38.4e3;                  %   radio-frequency module bit rate (symbol speed), kbit/s
+Strn = 45;                        %   noise srength coefficient
+R_uart = 19.2e3;                  %   RS-485 interface bit rate (symbol speed), kbit/s
+R_rfm  = 19.2e3;                  %   radio-frequency module bit rate (symbol speed), kbit/s
 G_rc = 1.0;                       %   the gain of the receiving antenna
 G_tr = 1.0;                       %   the gain of the transmitting antenna
-ef = 5;
+fading = [5 10 20 40 100]';
 
 % message values
 V_pra  = 4 .* 8;                 %   preamble size
 V_sync = 4 .* 8;                 %   synchronization word size
+V_start = 1 .* 8;                %   start comdition
 V_len  = 1 .* 8;                 %   data packet length
 V_data = 25 .* 8;                %   data packet size
 V_crc  = 4 .* 8;                 %   CRC size
-V_ack  = 2 .* 8;                 %   acknowledgement size
+V_stop = 1 .* 8;                 %   stop comdition
+V_ack_d  = 2 .* 8;               %   acknowledgement data size
 
-V_tx = V_pra + V_sync + V_len + V_data + V_crc;
-V_rx = 0.6 .* V_pra + V_sync + V_len + V_data + V_crc;
+V_tx = V_pra + V_sync + V_start + V_len + V_data + V_crc + V_stop;
+V_rx = round(0.6 .* V_pra + V_sync + V_start + V_len + V_data + V_crc + V_stop);
+V_ack = V_pra + V_sync + V_start + V_len + V_ack_d + V_crc + V_stop;
 
 % MCU parameters
 f_clk = 48e6;
 T_clk = 1 ./ f_clk;
-
 N_rx_sys = 15913;
 N_tx_sys = 16737;
+t_intr = 0.33e-6;                %   interrupt time
 
+% additive time expenses part
+t_data = 1.75e-3;                %   data sensors gathering
+t_mcu_tx = T_clk .* N_tx_sys;    %   MCU processing time
+
+t_add = t_data + t_mcu_tx;
+
+%! multiplicative time expenses part
 % recieve radio communication time expenses
-T_intr = 0.33e-6;                %   interrupt time
-T_mcu_rx = T_clk .* N_rx_sys;    %   MCU processing time
-T_rf_rx = V_rx ./ R_rfm;
-T_rx = T_intr + T_rf_rx + T_mcu_rx;
+t_rf_rx = V_rx ./ R_rfm;
+t_mcu_rx = T_clk .* N_rx_sys;    %   MCU processing time
+t_uart_rx = V_rx ./ R_uart;
 
-% transmit radio communication time expenses
-T_mcu_tx = T_clk .* N_tx_sys;    %   MCU processing time
-T_rf_tx = V_tx ./ R_rfm;
-T_tx = T_rf_tx + T_mcu_tx;
+t_rx = t_intr + t_rf_rx + t_mcu_rx + t_uart_rx;
 
-% UART communication time expenses
-T_uart_tx = V_tx ./ R_uart;
-T_uart_rx = V_rx ./ R_uart;
-T_uart = T_uart_rx + T_uart_tx;
+% acknowledgement transmit radio communication time expenses
+t_uart_ack = V_ack ./ R_uart;
+t_rf_ack = V_ack ./ R_rfm;
 
-% transmit radio communication time expenses
-T_rf_tx = V_tx ./ R_rfm;
+t_ack = t_mcu_tx + t_uart_ack + t_rf_ack;
+
+% data transmit radio communication time expenses
+t_rf_tx = V_tx ./ R_rfm;
+t_uart_tx = V_tx ./ R_uart;
+t_tx = t_rf_tx + t_uart_tx;
+
+t_mlt = t_rx + t_tx + t_ack;
 
 % the resultative time expenses
-T_rep = T_rx + T_tx + T_uart;
 
-l_ij = Z ./ (k + 1);
-P_rc = (P_tr .* G_tr .* G_rc .* V_em.^2) ./ (4 .* pi .* l_ij .* f_b).^2;
+d_i = z_i ./ (x_i + 1);
+P_rc = (P_tr .* G_tr .* G_rc .* V_em.^2) ./ (4 .* pi .* d_i .* f_b).^2;
 
-P_rx_max = 10.^(SNR ./ 10);
-%P_rx_max = P_tr .* 10.^(SNR ./ 10);
-P_n = Strn .* P_rx_max;
+P_rx_max = 10.^(SNR ./ 10 - 3);
+P_n = P_rx_max .* 10.^(Strn/10);
 
 h2 = P_rc ./ P_n;
-%p_ber_ij = 0.5 .* exp(-h2);
-p_ber_ij = ((ef + 1) ./ (h2 + 2 .* ef + 2)) .* exp(-((ef .*  h2) ./ (h2 + 2 .* ef + 2)));
 
-T_rep = k .* T_rep .* (1 ./ ((1 - p_ber_ij).^(V_tx)));
+for i = fading(1 : 1 : 5)
 
-p = plot(k, T_rep, 'r');
+p_ber_i = ((fading + 1) ./ (h2 + 2 .* fading + 2)) .* exp(-((fading .*  h2) ./ (h2 + 2 .* fading + 2)));
+t_del_i = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i).^(V_tx + V_ack)));
+
+p = plot(x_i, t_del_i);
 p(1).LineWidth = 2;
 hold on;
 grid on;
 
-%syms T_ij k T_rep p_ber_ij V_tx V_rx;
-%T_f = k .* T_rep .* (1 ./ (((1 - p_ber_ij).^V_tx) .* ((1 - p_ber_ij).^V_rx)));
-%pretty(T_f);
+end
+
+%syms t_del_i x_i t_add t_mlt p_ber_i V_tx V_ack;
+%t_del_i = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i).^(V_tx + V_ack)));
+%pretty(t_del_i);
