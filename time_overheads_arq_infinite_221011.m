@@ -5,8 +5,9 @@
 %
 
 % operation zone data
-z_i = 15e3;                       %   the full operation distance, m
-x_i = 5 : 1 : 65;                 %   sensor node quantity
+z_i = 15e3;                                                                % the full operation distance, m
+nodes_quantity = 120;                                                      % the whole networksensor node quantity
+x_i = 1 : 1 : nodes_quantity  + 1;                                         % sensor node quantity
 
 % comunication parameters
 f_b = 433e6;                      %   carier frequency, Hz
@@ -78,18 +79,25 @@ P_n = P_rx_max .* 10.^(Strn/10);
 
 h2 = P_rc ./ P_n;
 
-for i = fading(1 : 1 : 5)
-
-p_ber_i = ((fading + 1) ./ (h2 + 2 .* fading + 2)) .* exp(-((fading .*  h2) ./ (h2 + 2 .* fading + 2)));
-t_del_i = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i).^(V_tx + V_ack)));
-
-p = plot(x_i, t_del_i);
-p(1).LineWidth = 2;
-hold on;
-grid on;
-
+plot_colors = [0.533 0.000 0.082; ...                                      % red
+               0.941 0.376 0.000; ...                                      % orange
+               0.447 0.588 0.322; ...                                      % green
+               0.000 0.478 0.682; ...                                      % ligt blue
+               0.114 0.059 0.475];                                         % purpur
+ 
+p_ber_i = zeros(areas_quantity, nodes_quantity + 1);
+t_del_i = zeros(areas_quantity, nodes_quantity + 1);
+ 
+for i = (1 : 1 : areas_quantity)
+    p_ber_i(i, :) = ((fading(i, 1) + 1) ./ (h2 + 2 .* fading(i, 1) + 2)) .* ...
+                exp(-((fading(i, 1) .*  h2) ./ (h2 + 2 .* fading(i, 1) + 2)));
+    t_del_i(i, :) = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i(i, :)).^(V_tx + V_ack)));
+    graph1(i, :) = plot(x_i, t_del_i(i, :), ...
+    'LineWidth', 2.0, 'Color', plot_colors(i, :));
+    hold on;
+    grid;
 end
 
-%syms t_del_i x_i t_add t_mlt p_ber_i V_tx V_ack;
-%t_del_i = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i).^(V_tx + V_ack)));
-%pretty(t_del_i);
+xlim([12 nodes_quantity / 2.0]);
+ylim([0 10]);
+hold off;

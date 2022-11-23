@@ -1,5 +1,5 @@
 %
-%   Calculation time overheads that spend within the whole transmit
+%   Calculation the time overheads that spend within the whole transmit
 %   process in a Linear Wireless Sensor Network (LSN)
 %   for ARQ protocols with infinite repeat sending
 %
@@ -7,7 +7,7 @@
 % operation zone data
 z_i = 15e3;                                                                % the full operation distance, m
 nodes_quantity = 120;                                                      % the whole networksensor node quantity
-x_i = 1 : 1 : nodes_quantity + 1;                                          % area sensor node quantity
+x_i = 1 : 1 : nodes_quantity  + 1;                                         % sensor node quantity
 
 % comunication parameters
 f_b = 433e6;                                                               % carier frequency, Hz
@@ -19,8 +19,10 @@ R_uart = 19.2e3;                                                           % RS-
 R_rfm  = 19.2e3;                                                           % radio-frequency module bit rate (symbol speed), kbit/s
 G_rc = 1.0;                                                                % the gain of the receiving antenna
 G_tr = 1.0;                                                                % the gain of the transmitting antenna
-fading = [5 10 20 40 100]';
-areas_quantity = size(fading, 1);
+fading = [5 10 20 40 100]';                                                % area radio propagation characteristics matrix
+areas_quantity = size(fading, 1);                                          % the LWSN areas qantity
+repeat_number = 3;                                                         % retranslation repeat initiation processes number
+t_wt = 8e-3;                                                               % acknowlegement waiting window time, ms
 
 % message values
 V_pra  = 4 .* 8;                                                           % preamble size
@@ -72,7 +74,7 @@ t_mlt = t_rx + t_tx + t_ack;
 
 % the resultative time expenses
 
-d_i = z_i ./ x_i + 1;
+d_i = z_i ./ (x_i + 1);
 P_rc = (P_tr .* G_tr .* G_rc .* V_em.^2) ./ (4 .* pi .* d_i .* f_b).^2;
 
 P_rx_max = 10.^(SNR ./ 10 - 3);
@@ -85,73 +87,21 @@ plot_colors = [0.533 0.000 0.082; ...                                      % red
                0.447 0.588 0.322; ...                                      % green
                0.000 0.478 0.682; ...                                      % ligt blue
                0.114 0.059 0.475];                                         % purpur
- 
+
 p_ber_i = zeros(areas_quantity, nodes_quantity + 1);
 t_del_i = zeros(areas_quantity, nodes_quantity + 1);
  
 for i = (1 : 1 : areas_quantity)
     p_ber_i(i, :) = ((fading(i, 1) + 1) ./ (h2 + 2 .* fading(i, 1) + 2)) .* ...
                 exp(-((fading(i, 1) .*  h2) ./ (h2 + 2 .* fading(i, 1) + 2)));
-    t_del_i(i, :) = t_add + x_i .* t_mlt .* (1 ./ ((1 - p_ber_i(i, :)).^(V_tx + V_ack)));
-    graph1(i, :) = plot(x_i, t_del_i(i, :), ...
+    t_del_i(i, :) = t_add + x_i .* (t_mlt + (t_mlt - t_rx + t_wt) .* ...
+                    repeat_number .* ((1 - p_ber_i(i, :)).^(V_tx + V_ack)));
+    graph1(i) = plot(x_i, t_del_i(i, :), ...
     'LineWidth', 2.0, 'Color', plot_colors(i, :));
     hold on;
     grid;
 end
 
-%
-%   Nodes quantity optimization
-%   The Bellman equation realization
-%
-
-s = nodes_quantity;                                                        % the distributed resource quantity
-s_k = 0;                                                                   % distributed among the rest area resource quantity
-x_k = 0;                                                                   % the k-area distributed resource quantity
-t_del = zeros(areas_quantity, s + 1);
-nodes = zeros(areas_quantity, s + 1);                                      % optimal node quantity matrix
-
-t_del(areas_quantity, :) = t_del_i(areas_quantity, :);                     % straight copy for the edge LWSN area
-
-for s_k = (0 : 1 : s)                                                      % distributed resource enumeration loop
-    for area = (areas_quantity - 1 : -1 : 1)                               % area enumeration loop
-        for x_k = (s_k : -1 : 0)                                           % the k-area distributed resource enumeration loop
-            t_temp = t_del_i(area, x_k + 1) + ...
-                     t_del(area + 1, (s_k - x_k) + 1);
-            if((t_temp < t_del(area, s_k + 1)) || ...                      % conditional optimization for LWSN k-area
-                (t_del(area, s_k + 1) == 0))
-                t_del(area, s_k + 1) = t_temp;
-                nodes(area, s_k + 1) = x_k;                                % intermediate nodes quantity storing for subsequent ...
-                                                                           % nodes area distribution
-            end
-        end
-    end
-end
-
-distribution = zeros(1 , areas_quantity);                                  % final nodes distribution matrix creation
-balance = s;                                                               % nodes remainder variable
-
-for k = (1 : 1 : areas_quantity)                                           % the depth-first search loop
-	distribution(1, k) = nodes(k, balance + 1);
-    balance = balance - distribution(1, k);
-end
-distribution(1, areas_quantity) = balance;
-t_del_r = t_del(1, s + 1);
-%plot([0 nodes_quantity],[t_del_r t_del_r]);
-
-for k = (1 : 1 : areas_quantity)
-    graph2 = plot([distribution(1, k) distribution(1, k)], ...
-                  [0 t_del_i(k, distribution(1, k))], ...
-                  'LineStyle', "--", ...
-                  'LineWidth', 1.0, ...
-                  'Color', plot_colors(k, :));
-     graph3 = plot([0 distribution(1, k)], ...
-                   [t_del_i(k, distribution(1, k)) t_del_i(k, distribution(1, k))], ...
-                   'LineStyle', "--", ...
-                   'LineWidth', 1.0, ...
-                   'Color', plot_colors(k, :));
-    hold on;
-end
-
-xlim([12 nodes_quantity / 2.0]);
+xlim([12 nodes_quantity / 2.5]);
 ylim([0 10]);
 hold off;
